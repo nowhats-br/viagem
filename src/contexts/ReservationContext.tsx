@@ -1,97 +1,86 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
-import { Passenger, Reservation, SeatType } from '../types';
-import { faker } from '@faker-js/faker';
+import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
+import { Passenger, ExcursionSettings, Payment } from '../types';
+import { getExcursionSettings, saveReservationAndPassengers } from '../lib/supabase';
 
 interface ReservationContextType {
   passengers: Passenger[];
-  reservations: Reservation[];
-  addPassenger: (name: string, document: string, seatType: SeatType) => Passenger;
+  settings: ExcursionSettings | null;
+  addPassenger: (passengerData: Omit<Passenger, 'id' | 'seatNumber'>) => Passenger;
   updatePassengerSeat: (passengerId: string, seatNumber: number) => void;
-  addAnotherPassenger: () => void;
-  completeReservation: (payment: Reservation['payment']) => void;
-  markInstallmentAsPaid: (reservationId: string) => void;
-  getOccupiedSeats: (seatType: SeatType) => number[];
+  removePassenger: (passengerId: string) => void;
+  completeReservation: (payment: Payment) => Promise<void>;
+  clearReservation: () => void;
 }
 
 const ReservationContext = createContext<ReservationContextType | undefined>(undefined);
 
-// Mock initial occupied seats
-const initialOccupiedLeito = [3, 10];
-const initialOccupiedSemiLeito = [5, 12, 25, 26, 29, 30];
-
 export const ReservationProvider = ({ children }: { children: ReactNode }) => {
   const [passengers, setPassengers] = useState<Passenger[]>([]);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [settings, setSettings] = useState<ExcursionSettings | null>(null);
 
-  const addPassenger = (name: string, document: string, seatType: SeatType): Passenger => {
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const data = await getExcursionSettings();
+        setSettings(data);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  const addPassenger = useCallback((passengerData: Omit<Passenger, 'id' | 'seatNumber'>): Passenger => {
     const newPassenger: Passenger = {
-      id: faker.string.uuid(),
-      name,
-      document,
-      seatType,
+      id: crypto.randomUUID(),
+      ...passengerData,
       seatNumber: null,
     };
     setPassengers(prev => [...prev, newPassenger]);
     return newPassenger;
-  };
+  }, []);
 
-  const updatePassengerSeat = (passengerId: string, seatNumber: number) => {
+  const updatePassengerSeat = useCallback((passengerId: string, seatNumber: number) => {
     setPassengers(prev =>
       prev.map(p => (p.id === passengerId ? { ...p, seatNumber } : p))
     );
-  };
+  }, []);
 
-  const addAnotherPassenger = () => {
-    // This function will be used to reset the flow for a new passenger
-    // In a real app, you might navigate back to the registration form
-    console.log("Adding another passenger");
-  };
+  const removePassenger = useCallback((passengerId: string) => {
+    setPassengers(prev => prev.filter(p => p.id !== passengerId));
+  }, []);
 
-  const completeReservation = (payment: Reservation['payment']) => {
-    const newReservation: Reservation = {
-      id: faker.string.uuid(),
-      passengers: [...passengers],
-      payment,
-      totalAmount: passengers.length * (passengers[0]?.seatType === 'leito' ? 189.99 : 119.99),
-      paidInstallments: 0,
-    };
-    setReservations(prev => [...prev, newReservation]);
-    setPassengers([]); // Clear current passengers for the next reservation
-  };
+  const clearReservation = useCallback(() => {
+    setPassengers([]);
+  }, []);
 
-  const markInstallmentAsPaid = (reservationId: string) => {
-    setReservations(prev =>
-      prev.map(r => {
-        if (r.id === reservationId && r.payment && r.paidInstallments < r.payment.installments) {
-          return { ...r, paidInstallments: r.paidInstallments + 1 };
-        }
-        return r;
-      })
-    );
-  };
-  
-  const getOccupiedSeats = (seatType: SeatType): number[] => {
-    const reservedSeats = reservations
-      .flatMap(r => r.passengers)
-      .filter(p => p.seatType === seatType && p.seatNumber !== null)
-      .map(p => p.seatNumber as number);
-      
-    const initialSeats = seatType === 'leito' ? initialOccupiedLeito : initialOccupiedSemiLeito;
+  const completeReservation = useCallback(async (payment: Payment) => {
+    if (!settings || passengers.length === 0 || passengers.some(p => p.seatNumber === null)) {
+      throw new Error("Dados da reserva incompletos. Verifique os passageiros e assentos.");
+    }
+
+    const totalAmount = passengers.reduce((total, p) => {
+      const price = p.seatType === 'leito' ? settings.leito_price : settings.semi_leito_price;
+      return total + price;
+    }, 0);
+
+    const passengersToSave = passengers.map(({ id, ...rest }) => rest);
+
+    await saveReservationAndPassengers(passengersToSave, totalAmount, payment);
     
-    return [...initialSeats, ...reservedSeats];
-  };
+    // Do not clear passengers here, confirmation page might need them briefly
+  }, [settings, passengers]);
 
   return (
     <ReservationContext.Provider
       value={{
         passengers,
-        reservations,
+        settings,
         addPassenger,
         updatePassengerSeat,
-        addAnotherPassenger,
+        removePassenger,
         completeReservation,
-        markInstallmentAsPaid,
-        getOccupiedSeats
+        clearReservation,
       }}
     >
       {children}

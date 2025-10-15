@@ -1,85 +1,97 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useReservation } from '../contexts/ReservationContext';
+import { User, FileText, MapPin, Church, Phone, Armchair } from 'lucide-react';
 import { SeatType } from '../types';
-import { User, FileText, Armchair } from 'lucide-react';
 
 const PassengerRegistration: React.FC = () => {
   const [name, setName] = useState('');
   const [document, setDocument] = useState('');
-  const [seatType, setSeatType] = useState<SeatType>('semi-leito');
+  const [city, setCity] = useState('');
+  const [pastorName, setPastorName] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
   const [error, setError] = useState('');
+  
   const navigate = useNavigate();
-  const { addPassenger } = useReservation();
+  const { seatType } = useParams<{ seatType: SeatType }>();
+  const { addPassenger, settings } = useReservation();
+
+  if (!seatType || (seatType !== 'leito' && seatType !== 'semi-leito')) {
+    navigate('/');
+    return null;
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !document.trim()) {
-      setError('Nome e documento são obrigatórios.');
+    if (!name.trim() || !document.trim() || !city.trim() || !pastorName.trim() || !whatsapp.trim()) {
+      setError('Todos os campos são obrigatórios.');
       return;
     }
-    const passenger = addPassenger(name, document, seatType);
+    const passenger = addPassenger({ name, document, city, pastor_name: pastorName, seatType, whatsapp });
     navigate(`/selecionar-assento/${passenger.id}`);
   };
+  
+  const price = seatType === 'leito' ? settings?.leito_price : settings?.semi_leito_price;
 
   return (
-    <div className="max-w-md mx-auto mt-10 p-8 bg-white rounded-xl shadow-lg">
-      <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">Cadastro de Passageiro</h2>
-      {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nome Completo</label>
-          <div className="mt-1 relative rounded-md shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <User className="h-5 w-5 text-gray-400" />
-            </div>
-            <input
-              type="text"
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-purple focus:border-brand-purple sm:text-sm"
-              placeholder="João da Silva"
-              required
-            />
-          </div>
+    <div className="max-w-md mx-auto mt-10">
+       <div className="bg-blue-50 border-l-4 border-brand-blue text-blue-800 p-4 rounded-r-lg mb-6">
+        <h3 className="font-bold">Sua Reserva</h3>
+        <div className="flex items-center text-sm mt-2">
+          <Armchair className="w-4 h-4 mr-2" />
+          Poltrona: <span className="font-semibold ml-1">{seatType === 'leito' ? 'Leito' : 'Semi-Leito'}</span>
         </div>
-        <div>
-          <label htmlFor="document" className="block text-sm font-medium text-gray-700">Documento (CPF)</label>
-          <div className="mt-1 relative rounded-md shadow-sm">
-             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FileText className="h-5 w-5 text-gray-400" />
+        {price && (
+            <div className="flex items-center text-sm mt-1">
+                <span className="font-semibold">R$ {price.toFixed(2)}</span>
             </div>
-            <input
-              type="text"
-              id="document"
-              value={document}
-              onChange={(e) => setDocument(e.target.value)}
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-purple focus:border-brand-purple sm:text-sm"
-              placeholder="123.456.789-00"
-              required
-            />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Tipo de Poltrona</label>
-          <div className="mt-2 grid grid-cols-2 gap-4">
-            <div onClick={() => setSeatType('semi-leito')} className={`cursor-pointer p-4 border rounded-lg flex flex-col items-center justify-center transition-all ${seatType === 'semi-leito' ? 'bg-brand-purple text-white ring-2 ring-brand-purple' : 'bg-gray-50 hover:bg-gray-100'}`}>
-              <Armchair className="h-8 w-8 mb-2"/>
-              <span className="font-semibold">Semi-Leito</span>
-              <span className="text-xs">R$ 119,99</span>
-            </div>
-            <div onClick={() => setSeatType('leito')} className={`cursor-pointer p-4 border rounded-lg flex flex-col items-center justify-center transition-all ${seatType === 'leito' ? 'bg-brand-purple text-white ring-2 ring-brand-purple' : 'bg-gray-50 hover:bg-gray-100'}`}>
-              <Armchair className="h-8 w-8 mb-2"/>
-              <span className="font-semibold">Leito</span>
-              <span className="text-xs">R$ 189,99</span>
+        )}
+      </div>
+      <div className="p-8 bg-white rounded-xl shadow-lg">
+        <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">Cadastro de Passageiro</h2>
+        {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nome Completo</label>
+            <div className="mt-1 relative">
+              <User className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input type="text" id="name" value={name} onChange={(e) => setName(e.target.value)} className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue" required />
             </div>
           </div>
-        </div>
-        <button type="submit" className="w-full bg-brand-yellow hover:bg-yellow-400 text-gray-800 font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105">
-          Escolher Poltrona
-        </button>
-      </form>
+          <div>
+            <label htmlFor="document" className="block text-sm font-medium text-gray-700">CPF</label>
+            <div className="mt-1 relative">
+              <FileText className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input type="text" id="document" value={document} onChange={(e) => setDocument(e.target.value)} className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue" required />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="whatsapp" className="block text-sm font-medium text-gray-700">WhatsApp</label>
+            <div className="mt-1 relative">
+              <Phone className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input type="tel" id="whatsapp" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue" required placeholder="(XX) XXXXX-XXXX"/>
+            </div>
+          </div>
+          <div>
+            <label htmlFor="city" className="block text-sm font-medium text-gray-700">Cidade</label>
+            <div className="mt-1 relative">
+              <MapPin className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input type="text" id="city" value={city} onChange={(e) => setCity(e.target.value)} className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue" required />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="pastorName" className="block text-sm font-medium text-gray-700">Nome do Pastor</label>
+            <div className="mt-1 relative">
+              <Church className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input type="text" id="pastorName" value={pastorName} onChange={(e) => setPastorName(e.target.value)} className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue" required />
+            </div>
+          </div>
+          <button type="submit" className="w-full bg-brand-yellow hover:bg-yellow-500 text-gray-800 font-bold py-3 px-4 rounded-lg transition duration-300 flex items-center justify-center">
+            <Armchair className="mr-2 h-5 w-5" />
+            Escolher Poltrona
+          </button>
+        </form>
+      </div>
     </div>
   );
 };
