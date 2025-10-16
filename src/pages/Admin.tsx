@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Reservation, ExcursionSettings } from '../types';
-import { User, CreditCard, Check, Armchair, Loader2, Save, DollarSign, LogOut, Phone, AlertCircle } from 'lucide-react';
+import { User, CreditCard, Check, Armchair, Loader2, Save, DollarSign, LogOut, Phone, AlertCircle, Share2, Download, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { downloadPdf } from '../lib/pdf';
+import { shareTicket } from '../lib/share';
+import Ticket from '../components/Ticket';
 
 const Admin: React.FC = () => {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [settings, setSettings] = useState<Partial<ExcursionSettings>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState<number | null>(null);
   const { logout } = useAuth();
   const navigate = useNavigate();
 
@@ -77,11 +81,37 @@ const Admin: React.FC = () => {
     
     const { error } = await supabase
         .from('excursion_settings')
-        .update({ leito_price: settings.leito_price, semi_leito_price: settings.semi_leito_price })
+        .update({ 
+            leito_price: settings.leito_price, 
+            semi_leito_price: settings.semi_leito_price,
+            start_date: settings.start_date,
+            end_date: settings.end_date
+        })
         .eq('id', 1);
 
     if (error) alert('Erro ao salvar configurações.');
-    else alert('Preços atualizados com sucesso!');
+    else alert('Configurações atualizadas com sucesso!');
+  };
+
+  const handleAction = async (action: 'download' | 'share', reservation: Reservation) => {
+    if (!settings.start_date || !settings.end_date) {
+      alert("As datas da excursão não estão configuradas. Por favor, salve as datas de início e fim nas configurações.");
+      return;
+    }
+    setIsProcessing(reservation.id);
+    const ticketElementId = `ticket-admin-${reservation.id}`;
+    try {
+      if (action === 'download') {
+        await downloadPdf(ticketElementId, `passagem-reserva-${reservation.id}`);
+      } else {
+        await shareTicket(reservation, settings as ExcursionSettings, ticketElementId);
+      }
+    } catch (err) {
+      console.error(`Failed to ${action} ticket:`, err);
+      alert(`Ocorreu um erro ao ${action === 'download' ? 'baixar' : 'compartilhar'} a passagem.`);
+    } finally {
+      setIsProcessing(null);
+    }
   };
 
   const handleLogout = () => {
@@ -101,25 +131,35 @@ const Admin: React.FC = () => {
         </button>
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+      <div className="bg-white p-6 rounded-lg shadow-xl mb-8 border-t-4 border-brand-blue">
         <h2 className="text-2xl font-bold mb-4">Configurações da Excursão</h2>
-        <form onSubmit={handleSettingsSave} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <form onSubmit={handleSettingsSave} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+          {/* Prices */}
           <div>
-            <label htmlFor="leito_price" className="block text-sm font-medium text-gray-700">Preço Poltrona Leito</label>
+            <label htmlFor="leito_price" className="block text-sm font-medium text-gray-700">Preço Leito</label>
             <div className="relative mt-1">
               <DollarSign className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input type="number" step="0.01" id="leito_price" value={settings.leito_price || ''} onChange={e => setSettings({...settings, leito_price: parseFloat(e.target.value)})} className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md" required />
+              <input type="number" step="0.01" id="leito_price" value={settings.leito_price || ''} onChange={e => setSettings({...settings, leito_price: parseFloat(e.target.value)})} className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-blue/50 focus:border-brand-blue transition" required />
             </div>
           </div>
           <div>
-            <label htmlFor="semi_leito_price" className="block text-sm font-medium text-gray-700">Preço Poltrona Semi-Leito</label>
+            <label htmlFor="semi_leito_price" className="block text-sm font-medium text-gray-700">Preço Semi-Leito</label>
             <div className="relative mt-1">
               <DollarSign className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input type="number" step="0.01" id="semi_leito_price" value={settings.semi_leito_price || ''} onChange={e => setSettings({...settings, semi_leito_price: parseFloat(e.target.value)})} className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md" required />
+              <input type="number" step="0.01" id="semi_leito_price" value={settings.semi_leito_price || ''} onChange={e => setSettings({...settings, semi_leito_price: parseFloat(e.target.value)})} className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-blue/50 focus:border-brand-blue transition" required />
             </div>
           </div>
-          <button type="submit" className="bg-brand-blue hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center">
-            <Save className="w-5 h-5 mr-2" /> Salvar Preços
+          {/* Dates */}
+          <div>
+            <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">Data de Início</label>
+            <input type="date" id="start_date" value={settings.start_date || ''} onChange={e => setSettings({...settings, start_date: e.target.value})} className="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-blue/50 focus:border-brand-blue transition" required />
+          </div>
+          <div>
+            <label htmlFor="end_date" className="block text-sm font-medium text-gray-700">Data de Fim</label>
+            <input type="date" id="end_date" value={settings.end_date || ''} onChange={e => setSettings({...settings, end_date: e.target.value})} className="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-blue/50 focus:border-brand-blue transition" required />
+          </div>
+          <button type="submit" className="bg-brand-blue hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center h-10">
+            <Save className="w-5 h-5 mr-2" /> Salvar
           </button>
         </form>
       </div>
@@ -130,7 +170,7 @@ const Admin: React.FC = () => {
       ) : (
         <div className="space-y-6">
           {reservations.map(reservation => (
-            <div key={reservation.id} className="bg-white p-6 rounded-lg shadow-md">
+            <div key={reservation.id} className="bg-white p-6 rounded-lg shadow-lg">
               <div className="flex flex-wrap justify-between items-start mb-4">
                 <div>
                   <h3 className="text-xl font-bold">Reserva #{String(reservation.id).padStart(6, '0')}</h3>
@@ -143,8 +183,8 @@ const Admin: React.FC = () => {
                       <AlertCircle className="w-4 h-4 mr-2" /> Pagamento Pendente
                     </span>
                   ) : (
-                    <span className="flex items-center text-green-600 font-semibold bg-green-100 px-3 py-1 rounded-full text-sm">
-                      <Check className="w-4 h-4 mr-2" /> Reserva Confirmada
+                    <span className="flex items-center text-brand-green font-semibold bg-green-100 px-3 py-1 rounded-full text-sm">
+                      <CheckCircle className="w-4 h-4 mr-2" /> Reserva Confirmada
                     </span>
                   )}
                   <p className="text-sm text-gray-500 mt-2 md:mt-1">Parcelas: {reservation.paid_installments} / {reservation.installments}</p>
@@ -154,7 +194,7 @@ const Admin: React.FC = () => {
               <h4 className="font-semibold mb-2 mt-4">Passageiros:</h4>
               <div className="space-y-2">
                 {reservation.passengers.map(passenger => (
-                  <div key={passenger.id} className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-3 rounded-md">
+                  <div key={passenger.id} className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-4 rounded-md border-l-4 border-gray-200">
                     <div className="flex items-center">
                       <User className="w-5 h-5 mr-3 text-gray-500" />
                       <div>
@@ -166,18 +206,17 @@ const Admin: React.FC = () => {
                       <Phone className="w-5 h-5 mr-3 text-gray-500" />
                       <p className="text-sm text-gray-600">{passenger.whatsapp}</p>
                     </div>
-                    <div className="flex items-center text-sm">
-                      <Armchair className="w-4 h-4 mr-1 text-gray-500" />
-                      {passenger.seat_type} - {passenger.seat_number}
+                    <div className="flex items-center text-sm font-medium">
+                      <Armchair className="w-4 h-4 mr-2 text-gray-500" />
+                      {passenger.seat_type.replace('-', ' ')} - Poltrona {passenger.seat_number}
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-6">
-                <h4 className="font-semibold mb-2">Controle de Pagamento</h4>
+              <div className="mt-6 flex flex-wrap gap-4 items-center">
                 {reservation.paid_installments < reservation.installments ? (
-                  <button onClick={() => handleMarkAsPaid(reservation)} className="flex items-center bg-brand-blue hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
+                  <button onClick={() => handleMarkAsPaid(reservation)} className="flex items-center bg-brand-blue hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transform hover:scale-105 transition-transform">
                     <CreditCard className="w-5 h-5 mr-2" />
                     {reservation.paid_installments === 0 ? 'Confirmar 1º Pagamento' : `Marcar Parcela Paga (${reservation.paid_installments + 1}/${reservation.installments})`}
                   </button>
@@ -186,11 +225,31 @@ const Admin: React.FC = () => {
                     <Check className="w-5 h-5 mr-2" /> Pagamento Concluído!
                   </div>
                 )}
+                {reservation.status === 'confirmada' && (
+                  <div className="flex gap-2">
+                    <button onClick={() => handleAction('share', reservation)} disabled={isProcessing === reservation.id} className="flex items-center bg-brand-green hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 transform hover:scale-105 transition-transform" title="Compartilhar Passagem">
+                      {isProcessing === reservation.id ? <Loader2 className="w-5 h-5 animate-spin" /> : <Share2 className="w-5 h-5" />}
+                      <span className="hidden sm:inline ml-2">Compartilhar</span>
+                    </button>
+                    <button onClick={() => handleAction('download', reservation)} disabled={isProcessing === reservation.id} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 transform hover:scale-105 transition-transform" title="Baixar Passagem">
+                      {isProcessing === reservation.id ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                       <span className="hidden sm:inline ml-2">Baixar</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
+      {/* Hidden tickets for PDF generation */}
+      <div className="absolute -left-full top-0 opacity-0 -z-10">
+        {reservations.map(res => (
+          <div key={`ticket-container-admin-${res.id}`} id={`ticket-admin-${res.id}`}>
+            {settings.start_date && settings.end_date && <Ticket reservation={res} startDate={settings.start_date} endDate={settings.end_date} />}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

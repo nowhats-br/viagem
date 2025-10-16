@@ -41,4 +41,6 @@ export interface ExcursionSettings {
     id: number;
     leito_price: number;
     semi_leito_price: number;
+    start_date: string;
+    end_date: string;
 }
